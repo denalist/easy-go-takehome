@@ -1,0 +1,13 @@
+[project]
+name = "easy-go-fraud-inference"
+version = "0.1.0"
+description = "Minimal FastAPI-based fraud inference service."
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "fastapi[standard]>=0.109,<1",
+    "pydantic>=2.0,<3",
+    "pandas", 
+    "uvicorn"
+]
