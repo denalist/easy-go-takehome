@@ -23,7 +23,7 @@
   - Alternative (embed in model container) duplicates logic in two places; chosen approach centralizes transforms.
 - `user_demographic` reference table:
   - DynamoDB (PAY_PER_REQUEST) for low-latency point reads by `user_id`; optional DAX if read pressure grows.
-  - Trade-off: eventual consistency after hot updates; Aurora/Hudi were considered but are heavier for simple key-value lookups.
+  - Trade-off: eventual consistency after hot updates; Aurora were considered but are heavier for simple key-value lookups.
 - Model inference (SageMaker endpoint):
   - Pros: autoscaling, model registry compatibility, metrics; predictable latency under load.
   - Cons: per-hour cost; Lambda container could be cheaper but is tighter on cold start and heavier libs.
@@ -44,4 +44,20 @@ curl -X POST http://localhost:8000/infer \
 Example response:
 ```
 {"fraud_flag": false, "fraud_probability": 0.4042387390188852}
+```
+
+### Docker
+- Build:
+```
+docker build -t fraud-inference:local .
+```
+- Run:
+```
+docker run --rm -p 8000:8000 fraud-inference:local
+```
+
+### Tests
+Run with uv:
+```
+uv run pytest -q
 ```

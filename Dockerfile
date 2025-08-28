@@ -2,13 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime deps via pyproject
-COPY pyproject.toml ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir .
+# Install uv
+RUN pip install --no-cache-dir --upgrade pip uv
 
-# Copy source last
-COPY . .
+# Copy project metadata and source (so install reads pyproject deps)
+COPY pyproject.toml ./
+COPY src/ ./src
+
+# Install from pyproject (installs declared dependencies)
+RUN uv pip install --system .
 
 EXPOSE 8000
 ENV PYTHONUNBUFFERED=1

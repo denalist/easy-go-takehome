@@ -28,7 +28,7 @@ class InferenceRequest(BaseModel):
 
 class InferenceResponse(BaseModel): 
     fraud_flag: bool 
-    fraud_probability: float = Annotated[float, Field(ge=0.0, le=1.0)]
+    fraud_probability: Annotated[float, Field(ge=0.0, le=1.0)]
 
 
 # --------------- Model wrapper ---------------
@@ -40,7 +40,7 @@ class FraudModel:
                 with open(model_path, 'rb') as f: 
                     self.model = pickle.load(f)
             except Exception as e:
-                print("Failed to load XGBoost model") # better log this
+                print(f"Failed to load XGBoost model: {e}") # better log this
 
     def predict_proba(self, features: InferenceRequest) -> float:
         if self.model is not None: 
