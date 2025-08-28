@@ -20,6 +20,7 @@ Parameters:
 
 Conditions:
   HasTTL: !Not [!Equals [!Ref TTLAttributeName, '']]
+  EnablePITR: !Equals [!Ref PointInTimeRecovery, 'true']
 
 Resources:
   UserDemographicTable:
@@ -36,7 +37,7 @@ Resources:
       SSESpecification:
         SSEEnabled: true
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: !Equals [!Ref PointInTimeRecovery, 'true']
+        PointInTimeRecoveryEnabled: !If [EnablePITR, true, false]
       TimeToLiveSpecification: !If
         - HasTTL
         - AttributeName: !Ref TTLAttributeName

@@ -138,7 +138,7 @@ Outputs:
   SageMakerEndpointName:
     Value: !GetAtt SageMakerStack.Outputs.EndpointName
   KdaApplicationArn:
-    Value: !GetAtt KdaStack.Outputs.ApplicationArn
+    Value: !Ref KdaStack
   AlertsTopicArn:
     Value: !GetAtt AlertsStack.Outputs.TopicArn
 

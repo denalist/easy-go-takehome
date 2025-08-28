@@ -86,7 +86,7 @@ Outputs:
     Export:
       Name: !Sub ${AWS::StackName}-EndpointName
   EndpointArn:
-    Value: !GetAtt FraudEndpoint.Arn
+    Value: !GetAtt FraudEndpoint.EndpointArn
     Export:
       Name: !Sub ${AWS::StackName}-EndpointArn
   ExecutionRoleArn:

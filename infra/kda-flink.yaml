@@ -19,16 +19,11 @@ Parameters:
     Type: String
   ScoresBucketName:
     Type: String
-    Default: ''
   SageMakerEndpointName:
     Type: String
   AlertsTopicArn:
     Type: String
-    Default: ''
-
-Conditions:
-  HasScoresBucket: !Not [!Equals [!Ref ScoresBucketName, '']]
-  HasAlertsTopic: !Not [!Equals [!Ref AlertsTopicArn, '']]
+ 
 
 Resources:
   KdaServiceRole:
@@ -63,13 +58,13 @@ Resources:
               - Effect: Allow
                 Action: [s3:ListBucket]
                 Resource:
-                  - !Sub arn:${AWS::Partition}:s3:::${CodeBucketName}
-                  - !If [HasScoresBucket, !Sub arn:${AWS::Partition}:s3:::${ScoresBucketName}, !Ref 'AWS::NoValue']
+                  - !Sub 'arn:${AWS::Partition}:s3:::${CodeBucketName}'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ScoresBucketName}'
               - Effect: Allow
                 Action: [s3:GetObject, s3:PutObject]
                 Resource:
-                  - !Sub arn:${AWS::Partition}:s3:::${CodeBucketName}/*
-                  - !If [HasScoresBucket, !Sub arn:${AWS::Partition}:s3:::${ScoresBucketName}/*, !Ref 'AWS::NoValue']
+                  - !Sub 'arn:${AWS::Partition}:s3:::${CodeBucketName}/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ScoresBucketName}/*'
         - PolicyName: cw-logs
           PolicyDocument:
             Version: '2012-10-17'
@@ -90,7 +85,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: sns:Publish
-                Resource: !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+                Resource: !Ref AlertsTopicArn
       Tags:
         - Key: project
           Value: !Ref ProjectName
@@ -105,7 +100,7 @@ Resources:
         ApplicationCodeConfiguration:
           CodeContent:
             S3ContentLocation:
-              BucketARN: !Sub arn:${AWS::Partition}:s3:::${CodeBucketName}
+              BucketARN: !Sub 'arn:${AWS::Partition}:s3:::${CodeBucketName}'
               FileKey: !Ref CodeObjectKey
           CodeContentType: ZIPFILE
         EnvironmentProperties:
@@ -114,17 +109,13 @@ Resources:
               PropertyMap:
                 KINESIS_STREAM_ARN: !Ref KinesisStreamArn
                 SAGEMAKER_ENDPOINT: !Ref SageMakerEndpointName
-                SCORES_BUCKET: !If [HasScoresBucket, !Ref ScoresBucketName, '']
-                ALERTS_TOPIC_ARN: !If [HasAlertsTopic, !Ref AlertsTopicArn, '']
+                SCORES_BUCKET: !Ref ScoresBucketName
+                ALERTS_TOPIC_ARN: !Ref AlertsTopicArn
 
 Outputs:
   ApplicationName:
     Value: !Ref FraudFlinkApp
     Export:
       Name: !Sub ${AWS::StackName}-KdaApplicationName
-  ApplicationArn:
-    Value: !GetAtt FraudFlinkApp.Arn
-    Export:
-      Name: !Sub ${AWS::StackName}-KdaApplicationArn
 
 
