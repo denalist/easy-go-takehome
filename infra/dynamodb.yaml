@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: DynamoDB table for user_demographic (minimal, on-demand)
+
+Parameters:
+  ProjectName:
+    Type: String
+  TableName:
+    Type: String
+    Default: user_demographic
+  PartitionKeyName:
+    Type: String
+    Default: user_id
+  PointInTimeRecovery:
+    Type: String
+    AllowedValues: ['true','false']
+    Default: 'true'
+  TTLAttributeName:
+    Type: String
+    Default: ''
+
+Conditions:
+  HasTTL: !Not [!Equals [!Ref TTLAttributeName, '']]
+
+Resources:
+  UserDemographicTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-${TableName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: !Ref PartitionKeyName
+          AttributeType: S
+      KeySchema:
+        - AttributeName: !Ref PartitionKeyName
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !Equals [!Ref PointInTimeRecovery, 'true']
+      TimeToLiveSpecification: !If
+        - HasTTL
+        - AttributeName: !Ref TTLAttributeName
+          Enabled: true
+        - !Ref 'AWS::NoValue'
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+Outputs:
+  TableName:
+    Value: !Ref UserDemographicTable
+    Export:
+      Name: !Sub ${AWS::StackName}-UserDemographicTableName
+  TableArn:
+    Value: !GetAtt UserDemographicTable.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-UserDemographicTableArn
+
+

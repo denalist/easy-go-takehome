@@ -1,0 +1,130 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinesis Data Analytics (Apache Flink) app for feature enrich + scoring
+
+Parameters:
+  ProjectName:
+    Type: String
+  ApplicationName:
+    Type: String
+    Default: fraud-flink
+  RuntimeEnvironment:
+    Type: String
+    Default: FLINK-1_15
+  CodeBucketName:
+    Type: String
+  CodeObjectKey:
+    Type: String
+    Description: Flink job ZIP (fat jar or pyflink archive)
+  KinesisStreamArn:
+    Type: String
+  ScoresBucketName:
+    Type: String
+    Default: ''
+  SageMakerEndpointName:
+    Type: String
+  AlertsTopicArn:
+    Type: String
+    Default: ''
+
+Conditions:
+  HasScoresBucket: !Not [!Equals [!Ref ScoresBucketName, '']]
+  HasAlertsTopic: !Not [!Equals [!Ref AlertsTopicArn, '']]
+
+Resources:
+  KdaServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-kda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: kinesisanalytics.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: kinesis-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kinesis:DescribeStream
+                  - kinesis:DescribeStreamSummary
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:ListShards
+                  - kinesis:SubscribeToShard
+                Resource: !Ref KinesisStreamArn
+        - PolicyName: s3-io
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:ListBucket]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${CodeBucketName}
+                  - !If [HasScoresBucket, !Sub arn:${AWS::Partition}:s3:::${ScoresBucketName}, !Ref 'AWS::NoValue']
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${CodeBucketName}/*
+                  - !If [HasScoresBucket, !Sub arn:${AWS::Partition}:s3:::${ScoresBucketName}/*, !Ref 'AWS::NoValue']
+        - PolicyName: cw-logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: '*'
+        - PolicyName: sagemaker-invoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sagemaker:InvokeEndpoint
+                Resource: !Sub arn:${AWS::Partition}:sagemaker:${AWS::Region}:${AWS::AccountId}:endpoint/${SageMakerEndpointName}
+        - PolicyName: sns-publish
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !If [HasAlertsTopic, !Ref AlertsTopicArn, !Ref 'AWS::NoValue']
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+  FraudFlinkApp:
+    Type: AWS::KinesisAnalyticsV2::Application
+    Properties:
+      ApplicationName: !Sub ${ProjectName}-${ApplicationName}
+      RuntimeEnvironment: !Ref RuntimeEnvironment
+      ServiceExecutionRole: !GetAtt KdaServiceRole.Arn
+      ApplicationConfiguration:
+        ApplicationCodeConfiguration:
+          CodeContent:
+            S3ContentLocation:
+              BucketARN: !Sub arn:${AWS::Partition}:s3:::${CodeBucketName}
+              FileKey: !Ref CodeObjectKey
+          CodeContentType: ZIPFILE
+        EnvironmentProperties:
+          PropertyGroups:
+            - PropertyGroupId: app.config
+              PropertyMap:
+                KINESIS_STREAM_ARN: !Ref KinesisStreamArn
+                SAGEMAKER_ENDPOINT: !Ref SageMakerEndpointName
+                SCORES_BUCKET: !If [HasScoresBucket, !Ref ScoresBucketName, '']
+                ALERTS_TOPIC_ARN: !If [HasAlertsTopic, !Ref AlertsTopicArn, '']
+
+Outputs:
+  ApplicationName:
+    Value: !Ref FraudFlinkApp
+    Export:
+      Name: !Sub ${AWS::StackName}-KdaApplicationName
+  ApplicationArn:
+    Value: !GetAtt FraudFlinkApp.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-KdaApplicationArn
+
+

@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SageMaker realtime endpoint (XGBoost container) for fraud scoring
+
+Parameters:
+  ProjectName:
+    Type: String
+  ModelName:
+    Type: String
+    Default: fraud-model
+  ContainerImageUri:
+    Type: String
+    Description: ECR image URI for inference (e.g., regional XGBoost)
+  ArtifactsBucketName:
+    Type: String
+    Description: S3 bucket with model.tar.gz
+  ArtifactsKey:
+    Type: String
+    Description: S3 key to model.tar.gz
+  InstanceType:
+    Type: String
+    Default: ml.m5.large
+  InstanceCount:
+    Type: Number
+    Default: 1
+  VariantName:
+    Type: String
+    Default: fraud-variant
+
+Resources:
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-sagemaker-exec
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: sagemaker.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: s3-model-access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}
+                  - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/${ArtifactsKey}
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+  FraudModel:
+    Type: AWS::SageMaker::Model
+    Properties:
+      ModelName: !Sub ${ProjectName}-${ModelName}
+      ExecutionRoleArn: !GetAtt SageMakerExecutionRole.Arn
+      PrimaryContainer:
+        Image: !Ref ContainerImageUri
+        Mode: SingleModel
+        ModelDataUrl: !Sub s3://${ArtifactsBucketName}/${ArtifactsKey}
+
+  FraudEndpointConfig:
+    Type: AWS::SageMaker::EndpointConfig
+    Properties:
+      EndpointConfigName: !Sub ${ProjectName}-${ModelName}-config
+      ProductionVariants:
+        - VariantName: !Ref VariantName
+          ModelName: !Ref FraudModel
+          InstanceType: !Ref InstanceType
+          InitialInstanceCount: !Ref InstanceCount
+
+  FraudEndpoint:
+    Type: AWS::SageMaker::Endpoint
+    Properties:
+      EndpointName: !Sub ${ProjectName}-${ModelName}
+      EndpointConfigName: !Ref FraudEndpointConfig
+
+Outputs:
+  EndpointName:
+    Value: !Ref FraudEndpoint
+    Export:
+      Name: !Sub ${AWS::StackName}-EndpointName
+  EndpointArn:
+    Value: !GetAtt FraudEndpoint.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-EndpointArn
+  ExecutionRoleArn:
+    Value: !GetAtt SageMakerExecutionRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-SageMakerExecutionRoleArn
+
+

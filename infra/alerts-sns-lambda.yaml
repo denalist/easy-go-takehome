@@ -1,0 +1,121 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: SNS topic and Lambda to send Slack alerts for suspicious transactions
+
+Parameters:
+  ProjectName:
+    Type: String
+  TopicName:
+    Type: String
+    Default: fraud-alerts
+  SlackWebhookUrl:
+    Type: String
+    NoEcho: true
+  LambdaTimeout:
+    Type: Number
+    Default: 10
+  LambdaMemoryMB:
+    Type: Number
+    Default: 256
+
+Resources:
+  AlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${ProjectName}-${TopicName}
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+  AlertsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ProjectName}-alerts-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Tags:
+        - Key: project
+          Value: !Ref ProjectName
+
+  AlertsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-alerts
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt AlertsFunctionRole.Arn
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemoryMB
+      Environment:
+        Variables:
+          SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import urllib.request
+
+          WEBHOOK = os.environ.get('SLACK_WEBHOOK_URL')
+
+          def post_to_slack(text, blocks=None):
+            body = {'text': text}
+            if blocks is not None:
+              body['blocks'] = blocks
+            data = json.dumps(body).encode('utf-8')
+            req = urllib.request.Request(WEBHOOK, data=data, headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=5) as r:
+              return r.read().decode('utf-8')
+
+          def handler(event, context):
+            # SNS invokes with Records; each record contains an SNS message
+            records = event.get('Records', [])
+            for rec in records:
+              msg = rec.get('Sns', {}).get('Message', '')
+              try:
+                payload = json.loads(msg)
+              except Exception:
+                payload = {'message': msg}
+
+              # Minimal formatting with key fields if present
+              user_id = payload.get('user_id', 'unknown')
+              amount = payload.get('amount', 'n/a')
+              prob = payload.get('fraud_probability', payload.get('score', 'n/a'))
+              text = f"Fraud alert | user={user_id} amount={amount} prob={prob}"
+              try:
+                post_to_slack(text)
+              except Exception as e:
+                print('Slack post failed', e)
+            return {'ok': True}
+
+  AlertsInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AlertsFunction
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref AlertsTopic
+
+  AlertsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertsTopic
+      Protocol: lambda
+      Endpoint: !GetAtt AlertsFunction.Arn
+
+Outputs:
+  TopicArn:
+    Value: !Ref AlertsTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-AlertsTopicArn
+  FunctionArn:
+    Value: !GetAtt AlertsFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-AlertsFunctionArn
+
+

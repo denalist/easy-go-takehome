@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Kinesis Data Stream for fraud event ingestion (minimal, parameterized)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project prefix used in resource names
+  StreamMode:
+    Type: String
+    Default: PROVISIONED
+    AllowedValues: [PROVISIONED, ON_DEMAND]
+    Description: Choose PROVISIONED for predictable load, ON_DEMAND for autoscaling
+  ShardCount:
+    Type: Number
+    Default: 64
+    MinValue: 1
+    Description: Effective only when StreamMode=PROVISIONED
+  RetentionHours:
+    Type: Number
+    Default: 24
+    MinValue: 24
+    MaxValue: 8760
+  KmsKeyId:
+    Type: String
+    Default: alias/aws/kinesis
+    Description: KMS key id/arn or alias (e.g., alias/aws/kinesis)
+
+Conditions:
+  IsProvisioned: !Equals [!Ref StreamMode, PROVISIONED]
+
+Resources:
+  FraudIngestStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub ${ProjectName}-ingest
+      RetentionPeriodHours: !Ref RetentionHours
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: !Ref KmsKeyId
+      StreamModeDetails:
+        StreamMode: !Ref StreamMode
+      ShardCount: !If [IsProvisioned, !Ref ShardCount, !Ref 'AWS::NoValue']
+
+Outputs:
+  StreamName:
+    Description: Kinesis stream name
+    Value: !Ref FraudIngestStream
+    Export:
+      Name: !Sub ${AWS::StackName}-KinesisStreamName
+  StreamArn:
+    Description: Kinesis stream ARN
+    Value: !GetAtt FraudIngestStream.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-KinesisStreamArn
+
+

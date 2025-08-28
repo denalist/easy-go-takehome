@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: S3 buckets for model artifacts and scored outputs (minimal, parameterized)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: Project prefix used in resource names
+  ArtifactsBucketName:
+    Type: String
+    Default: ''
+    Description: Optional explicit bucket name for artifacts (leave empty to auto-name)
+  ScoresBucketName:
+    Type: String
+    Default: ''
+    Description: Optional explicit bucket name for scores (leave empty to auto-name)
+  UseKms:
+    Type: String
+    AllowedValues: ['true','false']
+    Default: 'false'
+  KmsKeyArn:
+    Type: String
+    Default: ''
+    Description: Optional KMS key ARN when UseKms=true
+
+Conditions:
+  HasArtifactsBucketName: !Not [!Equals [!Ref ArtifactsBucketName, '']]
+  HasScoresBucketName: !Not [!Equals [!Ref ScoresBucketName, '']]
+  UseKmsEncryption: !Equals [!Ref UseKms, 'true']
+
+Resources:
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !If
+        - HasArtifactsBucketName
+        - !Ref ArtifactsBucketName
+        - !Sub ${AWS::AccountId}-${ProjectName}-artifacts
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: !If [UseKmsEncryption, aws:kms, AES256]
+              KMSMasterKeyID: !If [UseKmsEncryption, !Ref KmsKeyArn, !Ref 'AWS::NoValue']
+
+  ScoresBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !If
+        - HasScoresBucketName
+        - !Ref ScoresBucketName
+        - !Sub ${AWS::AccountId}-${ProjectName}-scores
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: !If [UseKmsEncryption, aws:kms, AES256]
+              KMSMasterKeyID: !If [UseKmsEncryption, !Ref KmsKeyArn, !Ref 'AWS::NoValue']
+
+Outputs:
+  ArtifactsBucketName:
+    Value: !Ref ArtifactsBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-ArtifactsBucketName
+  ScoresBucketName:
+    Value: !Ref ScoresBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-ScoresBucketName
+
+

@@ -37,7 +37,7 @@ class FraudModel:
         self.model = None 
         if model_path and os.path.exists(model_path): 
             try: 
-                with model_path.open('rb') as f: 
+                with open(model_path, 'rb') as f: 
                     self.model = pickle.load(f)
             except Exception as e:
                 print("Failed to load XGBoost model") # better log this
@@ -49,36 +49,25 @@ class FraudModel:
        # return dummy scores 
         return random.random()
 
-def _build_model() -> FraudModel: 
+def build_model() -> FraudModel: 
     model_path = os.environ.get("FRAUD_MODEL_PATH", "fraud_model.pkl")
     return FraudModel(model_path)
 
 
 # --------------- FastAPI setup ---------------
 app = FastAPI()
-model = _build_model() 
+model = build_model() 
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
-@app.post('/score', response_model=InferenceResponse)
+@app.post('/infer', response_model=InferenceResponse)
 def infer(request: InferenceRequest) -> InferenceResponse:
-    features = [
-        request.age, 
-        request.gender_code,
-        request.location, 
-        request.subscription_type_code, 
-        request.tenure_months, 
-        request.income_bracket_code,
-        request.event_created_at_ts,
-        request.transaction_value,
-        request.channel_code,
-    ]
     try: 
-        score = model.predict_proba(features)
+        score = model.predict_proba(request)
     except Exception as e: 
-        raise HTTPException(status_code=500, detail="Error while scoring: {e}")
+        raise HTTPException(status_code=500, detail=f"Error while scoring: {e}")
     return InferenceResponse(fraud_flag=bool(score>=0.5), fraud_probability=score)
 
 

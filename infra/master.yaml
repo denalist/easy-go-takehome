@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Master stack orchestrating fraud inference architecture via nested stacks
+
+Parameters:
+  ProjectName:
+    Type: String
+  # Template URLs (upload child templates to S3 and provide their URLs)
+  KinesisTemplateUrl:
+    Type: String
+  S3TemplateUrl:
+    Type: String
+  DynamoTemplateUrl:
+    Type: String
+  SageMakerTemplateUrl:
+    Type: String
+  KdaTemplateUrl:
+    Type: String
+  AlertsTemplateUrl:
+    Type: String
+
+  # SageMaker inputs
+  ContainerImageUri:
+    Type: String
+  ArtifactsKey:
+    Type: String
+  InstanceType:
+    Type: String
+    Default: ml.m5.large
+  InstanceCount:
+    Type: Number
+    Default: 1
+
+  # Kinesis config
+  StreamMode:
+    Type: String
+    Default: PROVISIONED
+    AllowedValues: [PROVISIONED, ON_DEMAND]
+  ShardCount:
+    Type: Number
+    Default: 64
+  RetentionHours:
+    Type: Number
+    Default: 24
+  KinesisKmsKeyId:
+    Type: String
+    Default: alias/aws/kinesis
+
+  # KDA code location
+  CodeBucketName:
+    Type: String
+  CodeObjectKey:
+    Type: String
+
+  # Alerts
+  SlackWebhookUrl:
+    Type: String
+    NoEcho: true
+
+  # S3 encryption
+  UseS3Kms:
+    Type: String
+    AllowedValues: ['true','false']
+    Default: 'false'
+  S3KmsKeyArn:
+    Type: String
+    Default: ''
+
+Resources:
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref S3TemplateUrl
+      Parameters:
+        ProjectName: !Ref ProjectName
+        UseKms: !Ref UseS3Kms
+        KmsKeyArn: !Ref S3KmsKeyArn
+
+  KinesisStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref KinesisTemplateUrl
+      Parameters:
+        ProjectName: !Ref ProjectName
+        StreamMode: !Ref StreamMode
+        ShardCount: !Ref ShardCount
+        RetentionHours: !Ref RetentionHours
+        KmsKeyId: !Ref KinesisKmsKeyId
+
+  DynamoStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref DynamoTemplateUrl
+      Parameters:
+        ProjectName: !Ref ProjectName
+
+  AlertsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref AlertsTemplateUrl
+      Parameters:
+        ProjectName: !Ref ProjectName
+        SlackWebhookUrl: !Ref SlackWebhookUrl
+
+  SageMakerStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref SageMakerTemplateUrl
+      Parameters:
+        ProjectName: !Ref ProjectName
+        ContainerImageUri: !Ref ContainerImageUri
+        ArtifactsBucketName: !GetAtt S3Stack.Outputs.ArtifactsBucketName
+        ArtifactsKey: !Ref ArtifactsKey
+        InstanceType: !Ref InstanceType
+        InstanceCount: !Ref InstanceCount
+
+  KdaStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref KdaTemplateUrl
+      Parameters:
+        ProjectName: !Ref ProjectName
+        CodeBucketName: !Ref CodeBucketName
+        CodeObjectKey: !Ref CodeObjectKey
+        KinesisStreamArn: !GetAtt KinesisStack.Outputs.StreamArn
+        ScoresBucketName: !GetAtt S3Stack.Outputs.ScoresBucketName
+        SageMakerEndpointName: !GetAtt SageMakerStack.Outputs.EndpointName
+        AlertsTopicArn: !GetAtt AlertsStack.Outputs.TopicArn
+
+Outputs:
+  KinesisStreamArn:
+    Value: !GetAtt KinesisStack.Outputs.StreamArn
+  ArtifactsBucketName:
+    Value: !GetAtt S3Stack.Outputs.ArtifactsBucketName
+  ScoresBucketName:
+    Value: !GetAtt S3Stack.Outputs.ScoresBucketName
+  UserDemographicTableName:
+    Value: !GetAtt DynamoStack.Outputs.TableName
+  SageMakerEndpointName:
+    Value: !GetAtt SageMakerStack.Outputs.EndpointName
+  KdaApplicationArn:
+    Value: !GetAtt KdaStack.Outputs.ApplicationArn
+  AlertsTopicArn:
+    Value: !GetAtt AlertsStack.Outputs.TopicArn
+
+
